@@ -1,0 +1,27 @@
+schema_version = "1.3"
+
+[task]
+name = "local/step-delay-identify"
+description = "恒温台阶跃响应的 FOPDT 辨识：增益、时间常数与纯延迟"
+authors = [{ name = "shuai" }]
+keywords = ["python", "系统辨识", "FOPDT", "纯延迟"]
+
+[agent]
+timeout_sec = 3600
+
+[environment]
+build_timeout_sec = 900
+cpus = 1
+memory_mb = 2048
+storage_mb = 4096
+gpus = 0
+allow_internet = true
+
+[verifier]
+timeout_sec = 300
+
+[metadata]
+difficulty = "hard"
+category = "控制系统"
+tags = ["python", "system-identification", "fopdt", "delay-estimation", "least-squares"]
+expert_time_estimate = "3h"
