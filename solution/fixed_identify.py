@@ -49,7 +49,7 @@ def load_run(path):
     horizon = fit_cfg.get("horizon_s", 840.0)
     run_min = fit_cfg.get("frozen_run_min", 5)
     for key, val in (("baseline_window_s", base_win), ("horizon_s", horizon)):
-        if not isinstance(val, (int, float)) or isinstance(val, bool) or float(val) <= 0:
+        if not isinstance(val, (int, float)) or isinstance(val, bool) or not (float(val) > 0):
             _fail("fit.%s 要是正数" % key)
     if not isinstance(run_min, int) or isinstance(run_min, bool) or run_min < 2:
         _fail("fit.frozen_run_min 要是不小于 2 的整数")
@@ -84,7 +84,7 @@ def frozen_mask(ys, run_min):
         j = i + 1
         while j < n and ys[j] == ys[i]:
             j += 1
-        if j - i >= run_min:
+        if j - i > run_min - 1:
             for k in range(i, j):
                 mask[k] = True
         i = j
