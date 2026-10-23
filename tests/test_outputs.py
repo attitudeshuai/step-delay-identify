@@ -118,6 +118,53 @@ def _golden(fn, lo, hi, iters=70):
     return (a + b) / 2.0
 
 
+def _solve(a, b):
+    n = len(a)
+    m = [a[i][:] + [b[i]] for i in range(n)]
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(m[r][col]))
+        if abs(m[piv][col]) < 1e-18:
+            return None
+        m[col], m[piv] = m[piv], m[col]
+        pv = m[col][col]
+        for k in range(col, n + 1):
+            m[col][k] /= pv
+        for r in range(n):
+            if r == col:
+                continue
+            f = m[r][col]
+            for k in range(col, n + 1):
+                m[r][k] -= f * m[col][k]
+    return [m[i][n] for i in range(n)]
+
+
+def _uncertainties(ts, t_step, theta, tau, gain, sse):
+    """sigma_hat^2 * (J^T J)^-1，雅可比三列：gain、theta、tau。"""
+    dof = len(ts) - 3
+    if dof <= 0:
+        return 0.0, 0.0, 0.0
+    var = sse / dof
+    xtx = [[0.0] * 3 for _ in range(3)]
+    for t in ts:
+        s = t - t_step - theta
+        if s <= 0.0:
+            row = [0.0, 0.0, 0.0]
+        else:
+            e = math.exp(-s / tau)
+            row = [1.0 - e, -gain * e / tau, -gain * e * s / (tau * tau)]
+        for i in range(3):
+            for j in range(3):
+                xtx[i][j] += row[i] * row[j]
+    sol = _solve(xtx, [1.0, 0.0, 0.0])
+    sol2 = _solve(xtx, [0.0, 1.0, 0.0])
+    sol3 = _solve(xtx, [0.0, 0.0, 1.0])
+    if sol is None or sol2 is None or sol3 is None:
+        return 0.0, 0.0, 0.0
+    return (math.sqrt(max(var * sol[0], 0.0)),
+            math.sqrt(max(var * sol2[1], 0.0)),
+            math.sqrt(max(var * sol3[2], 0.0)))
+
+
 def independent_fit(data):
     times = [s["t"] for s in data["samples"]]
     us = [s["u"] for s in data["samples"]]
@@ -158,9 +205,12 @@ def independent_fit(data):
         tau = _golden(lambda x: _sse(base, ts, ser, t_step, theta, x)[0],
                       max(5.0, tau / 1.6), min(3000.0, tau * 1.6))
     sse, gain = _sse(base, ts, ser, t_step, theta, tau)
+    se_gain, se_theta, se_tau = _uncertainties(ts, t_step, theta, tau, gain, sse)
     return {"steady_gain_c_per_pct": gain / du, "time_constant_s": tau, "dead_time_s": theta,
             "model_rms_c": math.sqrt(sse / len(ts)), "skipped_frozen": sum(1 for m in mask if m),
-            "fitted_points": len(ts), "step_size_pct": du}
+            "fitted_points": len(ts), "step_size_pct": du,
+            "gain_uncertainty_c_per_pct": se_gain / abs(du),
+            "time_constant_uncertainty_s": se_tau, "dead_time_uncertainty_s": se_theta}
 
 
 def _run(path, out_path, timeout=240):
@@ -309,6 +359,29 @@ def test_invalid_runs_rejected_without_output(label, data):
     assert not [n for n in os.listdir(tmp) if n.endswith(".tmp")], "%s：留下临时文件" % label
 
 
+def test_parameter_uncertainties_reported():
+    """题面原文：「sigma_hat²·(JᵀJ)⁻¹」。
+
+    三个参数的不确定度都要为正、有限，且与独立复算相差不超过 12%；把 θ、τ 当成已知量、
+    只对增益求方差的写法，滞后与时间常数这两栏会明显偏小。
+    """
+    data = make_run(delay=38.0, tau=120.0, seed=1213)
+    report, ctx = run_case(data)
+    assert isinstance(report, dict), "没产出模型卡：stderr=%r" % (ctx["proc"].stderr or "")
+    exp = independent_fit(data)
+    se_gain = float(report["gain_uncertainty_c_per_pct"])
+    se_tau = float(report["time_constant_uncertainty_s"])
+    se_delay = float(report["dead_time_uncertainty_s"])
+    assert se_gain > 0.0 and se_tau > 0.0 and se_delay > 0.0, \
+        "参数不确定度不是正数：%r" % ((se_gain, se_tau, se_delay),)
+    assert abs(se_gain - exp["gain_uncertainty_c_per_pct"]) <= 0.12 * exp["gain_uncertainty_c_per_pct"], \
+        "增益不确定度没对上：被测 %r，独立复算 %r" % (se_gain, exp["gain_uncertainty_c_per_pct"])
+    assert abs(se_tau - exp["time_constant_uncertainty_s"]) <= 0.12 * exp["time_constant_uncertainty_s"], \
+        "时间常数不确定度没对上：被测 %r，独立复算 %r" % (se_tau, exp["time_constant_uncertainty_s"])
+    assert abs(se_delay - exp["dead_time_uncertainty_s"]) <= 0.12 * exp["dead_time_uncertainty_s"], \
+        "滞后不确定度没对上：被测 %r，独立复算 %r" % (se_delay, exp["dead_time_uncertainty_s"])
+
+
 def test_rmse_reflects_fit_quality():
     """题面原文：「报告给出拟合窗口内（剔除卡死点后）的残差均方根」。
 
@@ -344,6 +417,13 @@ def test_report_schema_and_rounding():
         v = float(report[key])
         assert math.isfinite(v), "%s 不是有限值" % key
         assert abs(v - round(v, 1)) <= 1e-12, "%s 不是一位小数：%r" % (key, v)
+    for key in ("time_constant_uncertainty_s", "dead_time_uncertainty_s"):
+        v = float(report[key])
+        assert v > 0.0 and math.isfinite(v), "%s 不是正数：%r" % (key, v)
+        assert abs(v - round(v, 4)) <= 1e-12, "%s 不是四位小数：%r" % (key, v)
+    gain_se = float(report["gain_uncertainty_c_per_pct"])
+    assert gain_se > 0.0 and math.isfinite(gain_se), "增益不确定度不是正数：%r" % (gain_se,)
+    assert abs(gain_se - round(gain_se, 6)) <= 1e-12, "增益不确定度不是六位小数：%r" % (gain_se,)
     v = float(report["model_rms_c"])
     assert math.isfinite(v) and abs(v - round(v, 4)) <= 1e-12, "model_rms_c 不是四位小数：%r" % v
     raw = open(ctx["out"], encoding="utf-8").read()

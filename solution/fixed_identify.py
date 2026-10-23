@@ -175,6 +175,55 @@ def fit_fopdt(ts, ys, base, t_step):
     return gain, tau, theta, rmse
 
 
+def _uncertainties(base, ts, ys, t_step, theta, tau, gain, sse):
+    """sigma_hat^2 * (J^T J)^-1：雅可比含 gain、theta、tau 三列。"""
+    n = len(ts)
+    dof = n - 3
+    if dof <= 0:
+        return 0.0, 0.0, 0.0
+    var = sse / dof
+    xtx = [[0.0] * 3 for _ in range(3)]
+    for t in ts:
+        s = t - t_step - theta
+        if s <= 0.0:
+            f = 0.0
+            df_dtheta = 0.0
+            df_dtau = 0.0
+        else:
+            e = math.exp(-s / tau)
+            f = 1.0 - e
+            df_dtheta = -e / tau
+            df_dtau = -e * s / (tau * tau)
+        row = [f, gain * df_dtheta, gain * df_dtau]
+        for i in range(3):
+            for j in range(3):
+                xtx[i][j] += row[i] * row[j]
+    inv = _inv3(xtx)
+    if inv is None:
+        return 0.0, 0.0, 0.0
+    diag = [max(var * inv[i][i], 0.0) for i in range(3)]
+    return math.sqrt(diag[0]), math.sqrt(diag[1]), math.sqrt(diag[2])
+
+
+def _inv3(a):
+    det = (a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1])
+           - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0])
+           + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]))
+    if abs(det) < 1e-18:
+        return None
+    inv = [[0.0] * 3 for _ in range(3)]
+    inv[0][0] = (a[1][1] * a[2][2] - a[1][2] * a[2][1]) / det
+    inv[0][1] = (a[0][2] * a[2][1] - a[0][1] * a[2][2]) / det
+    inv[0][2] = (a[0][1] * a[1][2] - a[0][2] * a[1][1]) / det
+    inv[1][0] = (a[1][2] * a[2][0] - a[1][0] * a[2][2]) / det
+    inv[1][1] = (a[0][0] * a[2][2] - a[0][2] * a[2][0]) / det
+    inv[1][2] = (a[0][2] * a[1][0] - a[0][0] * a[1][2]) / det
+    inv[2][0] = (a[1][0] * a[2][1] - a[1][1] * a[2][0]) / det
+    inv[2][1] = (a[0][1] * a[2][0] - a[0][0] * a[2][1]) / det
+    inv[2][2] = (a[0][0] * a[1][1] - a[0][1] * a[1][0]) / det
+    return inv
+
+
 def analyse(scan):
     times, us, ys = scan["times"], scan["us"], scan["ys"]
     mask = frozen_mask(ys, scan["run_min"])
@@ -204,11 +253,18 @@ def analyse(scan):
         _fail("拟合窗口内的有效采样点太少")
 
     gain, tau, theta, rmse = fit_fopdt(fit_ts, fit_ys, base, t_step)
+    sse = 0.0
+    for t, y in zip(fit_ts, fit_ys):
+        e = y - base - gain * _response(t, t_step, theta, tau)
+        sse += e * e
+    se_gain, se_theta, se_tau = _uncertainties(base, fit_ts, fit_ys, t_step, theta, tau, gain, sse)
     return {
         "recorded_points": len(times), "fitted_points": len(fit_ts),
         "skipped_frozen": sum(1 for m in mask if m),
         "pre_step_level_c": base, "step_time_s": t_step, "step_size_pct": d_u,
-        "steady_gain_c_per_pct": gain / d_u, "time_constant_s": tau, "dead_time_s": theta, "model_rms_c": rmse,
+        "steady_gain_c_per_pct": gain / d_u, "time_constant_s": tau, "dead_time_s": theta,
+        "model_rms_c": rmse, "gain_uncertainty_c_per_pct": se_gain / abs(d_u),
+        "time_constant_uncertainty_s": se_tau, "dead_time_uncertainty_s": se_theta,
     }
 
 
@@ -224,6 +280,9 @@ def build_report(scan, res):
         "time_constant_s": round(res["time_constant_s"], 1),
         "dead_time_s": round(res["dead_time_s"], 1),
         "model_rms_c": round(res["model_rms_c"], 4),
+        "gain_uncertainty_c_per_pct": round(res["gain_uncertainty_c_per_pct"], 6),
+        "time_constant_uncertainty_s": round(res["time_constant_uncertainty_s"], 4),
+        "dead_time_uncertainty_s": round(res["dead_time_uncertainty_s"], 4),
         "model_note": {"model": "fopdt", "unit": scan["unit"]},
     }
 
