@@ -9,6 +9,7 @@ set -u
 #   · 解释器走绝对路径：挡住 PATH 上的同名 python3
 
 mkdir -p /logs/verifier
+rm -f /logs/verifier/reward.txt  # 先清旧分数文件
 echo 0 > /logs/verifier/reward.txt
 DONE=0
 trap '[ "$DONE" = 1 ] || echo 0 > /logs/verifier/reward.txt' EXIT
