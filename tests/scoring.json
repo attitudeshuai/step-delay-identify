@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "gate_tests": [
+    "test_outputs.py::test_invalid_runs_rejected_without_output"
+  ],
+  "tests": {
+    "test_outputs.py::test_gain_and_tau_match_independent_fit": {
+      "weight": 0.18,
+      "rationale": "增益与时间常数是辨识的主结果，权重最高"
+    },
+    "test_outputs.py::test_delay_estimated_from_grid_search": {
+      "weight": 0.17,
+      "rationale": "纯滞后是本题最容易被忽略的量，单列一条"
+    },
+    "test_outputs.py::test_frozen_segment_removed_from_fit": {
+      "weight": 0.135,
+      "rationale": "传感器卡死段的剔除规则与剔除计数"
+    },
+    "test_outputs.py::test_second_run_with_other_parameters": {
+      "weight": 0.12,
+      "rationale": "换台架后参数仍要准，防过拟合单批数据"
+    },
+    "test_outputs.py::test_short_delay_run_still_estimated": {
+      "weight": 0.11,
+      "rationale": "短延迟不能被当成零"
+    },
+    "test_outputs.py::test_rmse_reflects_fit_quality": {
+      "weight": 0.08,
+      "rationale": "残差均方根要能反映拟合质量"
+    },
+    "test_outputs.py::test_report_schema_and_rounding": {
+      "weight": 0.08,
+      "rationale": "输出契约与位数"
+    },
+    "test_outputs.py::test_rerun_produces_identical_bytes": {
+      "weight": 0.065,
+      "rationale": "重复运行逐字节一致"
+    },
+    "test_outputs.py::test_failed_run_keeps_previous_report": {
+      "weight": 0.06,
+      "rationale": "失败不覆盖旧报告"
+    }
+  }
+}

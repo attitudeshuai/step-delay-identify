@@ -1,82 +1,109 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把 pytest 的 junitxml 结果按 WEIGHTS 折算成总分（0~1）。
+"""加权评分器：读 scoring.json 与 pytest 的 junit 报告，折算 reward 并落结构化报告。
 
-用法：python3 /tests/score.py --junit /tmp/results.xml --report-out /tmp/scoring-report.json \
-          --reward-out /logs/verifier/reward.txt
-WEIGHTS 从同目录 test_outputs.py 里静态读出（ast，不执行被测代码）。
-junit 缺失/为空/解析失败：reward 写 0，报告里记 INCOMPLETE。
+用法：
+  python3 score.py --config scoring.json --junit junit.xml \
+      --report-out scoring-report.json --reward-out reward.txt
+
+口径：
+  · gate_tests 里任何一条没通过 → 整份记 0（status=FAILED_GATE）；
+  · 有测试没出现在 junit 里（跑了但没收集到 / 被 skip）→ 记 0（status=INCOMPLETE）；
+  · 其余情况 reward = 通过用例的权重之和（权重来自 scoring.json，和为 1）。
 """
 import argparse
-import ast
 import json
-import os
 import sys
 import xml.etree.ElementTree as ET
 
 
-def load_weights(path):
+def load_config(path):
     with open(path, encoding="utf-8") as f:
-        tree = ast.parse(f.read())
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for t in node.targets:
-                if isinstance(t, ast.Name) and t.id == "WEIGHTS":
-                    return ast.literal_eval(node.value)
-    return {}
+        cfg = json.load(f)
+    if cfg.get("schema_version") != 1:
+        raise SystemExit("scoring.json schema_version must be 1")
+    gates = cfg.get("gate_tests") or []
+    tests = cfg.get("tests") or {}
+    if not gates or not tests:
+        raise SystemExit("scoring.json 需要非空的 gate_tests 与 tests")
+    return gates, tests
 
 
-def main():
+def load_outcomes(path):
+    tree = ET.parse(path)
+    root = tree.getroot()
+    outcomes = {}
+    for case in root.iter("testcase"):
+        name = (case.get("name") or "").split("[")[0]
+        cls = case.get("classname") or ""
+        module = cls.split(".")[-1] if cls else ""
+        cid = "%s.py::%s" % (module, name) if module else name
+        failed = any(child.tag in ("failure", "error") for child in case)
+        skipped = any(child.tag == "skipped" for child in case)
+        status = "fail" if failed else ("skip" if skipped else "pass")
+        # 同一用例的参数化变体：任一失败即算失败
+        if outcomes.get(cid) != "fail":
+            outcomes[cid] = status if outcomes.get(cid) != "fail" else "fail"
+        if status == "fail":
+            outcomes[cid] = "fail"
+    return outcomes
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
+    ap.add_argument("--config", required=True)
     ap.add_argument("--junit", required=True)
     ap.add_argument("--report-out", required=True)
     ap.add_argument("--reward-out", required=True)
-    a = ap.parse_args()
+    args = ap.parse_args(argv)
 
-    weights = load_weights(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                        "test_outputs.py"))
-    report = {"status": "INCOMPLETE", "total": 0.0, "cases": {}}
-    reward = 0.0
+    gates, tests = load_config(args.config)
+    try:
+        outcomes = load_outcomes(args.junit)
+    except (OSError, ET.ParseError) as exc:
+        report = {"schema_version": 1, "status": "INCOMPLETE", "reward": 0.0,
+                  "reason": "junit 读不出来：%s" % exc, "cases": {}}
+        payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+        with open(args.report_out, "w", encoding="utf-8", newline="\n") as f:
+            f.write(payload)
+        with open(args.reward_out, "w", encoding="utf-8", newline="\n") as f:
+            f.write("0.000000\n")
+        return 0
 
-    xml_ok = False
-    if os.path.exists(a.junit) and os.path.getsize(a.junit) > 0:
-        try:
-            root = ET.parse(a.junit).getroot()
-            xml_ok = True
-        except ET.ParseError:
-            xml_ok = False
+    cases = {}
+    missing = []
+    gate_failed = []
+    total = 0.0
+    for cid in gates:
+        status = outcomes.get(cid)
+        cases[cid] = {"kind": "gate", "status": status or "missing"}
+        if status is None:
+            missing.append(cid)
+        elif status != "pass":
+            gate_failed.append(cid)
+    for cid, meta in tests.items():
+        status = outcomes.get(cid)
+        cases[cid] = {"kind": "scored", "weight": meta["weight"],
+                      "rationale": meta["rationale"], "status": status or "missing"}
+        if status is None:
+            missing.append(cid)
+        elif status == "pass":
+            total += float(meta["weight"])
 
-    if xml_ok and weights:
-        failed = set()
-        seen = set()
-        for tc in root.iter("testcase"):
-            name = tc.get("name", "")
-            seen.add(name)
-            if list(tc):
-                failed.add(name)
-        missing = [n for n in weights if n not in seen]
-        if missing:
-            # 有测试根本没跑到（收集失败/被跳过），不能按全过计
-            report["status"] = "INCOMPLETE"
-            report["missing"] = missing
-        else:
-            total = 0.0
-            for name, w in weights.items():
-                passed = name not in failed
-                report["cases"][name] = {"weight": w, "status": "PASS" if passed else "FAIL"}
-                total += w * passed
-                print("%s: %s (权重 %.3f)" % (name, report["cases"][name]["status"], w),
-                      file=sys.stderr)
-            report["status"] = "COMPLETE"
-            report["total"] = total
-            reward = total
+    if missing:
+        status, reward = "INCOMPLETE", 0.0
+    else:
+        status, reward = "COMPLETED", round(0.0 if gate_failed else total, 6)
 
-    with open(a.report_out, "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=1)
-    with open(a.reward_out, "w", encoding="utf-8") as f:
-        f.write("%.6f" % reward)
-    print("%.6f" % reward)
+    report = {"schema_version": 1, "status": status, "reward": reward,
+              "gate_passed": not gate_failed, "missing": missing,
+              "gate_failed": gate_failed, "cases": cases}
+    with open(args.report_out, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    with open(args.reward_out, "w", encoding="utf-8", newline="\n") as f:
+        f.write("%.6f\n" % reward)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

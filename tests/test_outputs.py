@@ -7,6 +7,8 @@
 期望值不读被测代码，也不读参考解的输出。
 """
 import json
+
+import pytest
 import math
 import os
 import subprocess
@@ -184,60 +186,55 @@ def run_case(data):
     return report, {"run": rpath, "out": opath, "proc": proc, "dir": tmp}
 
 
-def _close(got, want, rel):
-    try:
-        v = float(got)
-    except (TypeError, ValueError):
-        return False
-    if not math.isfinite(v):
-        return False
-    return abs(v - want) <= rel * abs(want)
-
-
 def test_gain_and_tau_match_independent_fit():
-    """题面原文：「按 FOPDT 模型拟合增益与时间常数」。
+    """题面原文：「按 FOPDT 模型（一阶惯性 + 纯延迟）辨识」。
 
-    标准台架记录：增益相对误差不超过 1%，时间常数不超过 2%。
+    标准台架记录：增益相对误差不超过 0.15%，时间常数不超过 0.3%。
     """
     data = make_run(seed=101)
     report, _ = run_case(data)
-    if not isinstance(report, dict):
-        return False
+    assert isinstance(report, dict), "没有产出报告"
     exp = independent_fit(data)
-    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.0015)
-            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.003))
+    gain = float(report["steady_gain_c_per_pct"])
+    tau = float(report["time_constant_s"])
+    assert abs(gain - exp["steady_gain_c_per_pct"]) <= 0.0015 * abs(exp["steady_gain_c_per_pct"]), \
+        "增益与独立复算差得太多：被测 %r，复算 %r" % (gain, exp["steady_gain_c_per_pct"])
+    assert abs(tau - exp["time_constant_s"]) <= 0.003 * abs(exp["time_constant_s"]), \
+        "时间常数与独立复算差得太多：被测 %r，复算 %r" % (tau, exp["time_constant_s"])
 
 
 def test_delay_estimated_from_grid_search():
-    """题面原文：「纯延迟 θ 在 (θ, τ) 上搜出来，不能当零」。
+    """题面原文：「θ 与 τ 用残差平方和最小的方式估出来（先在网格上搜、再细化）」。
 
-    延迟真值 37.5 s：估计值与独立复算相差不超过 2 秒。
+    延迟真值 37.5 s：估计值与独立复算相差不超过 0.5 秒，且必须明显大于零。
     """
     data = make_run(seed=211)
     report, _ = run_case(data)
-    if not isinstance(report, dict):
-        return False
+    assert isinstance(report, dict), "没有产出报告"
     exp = independent_fit(data)
-    try:
-        got = float(report["dead_time_s"])
-    except (KeyError, TypeError, ValueError):
-        return False
-    return abs(got - exp["dead_time_s"]) <= 2.0
+    got = float(report["dead_time_s"])
+    assert abs(got - exp["dead_time_s"]) <= 0.5, \
+        "纯滞后与独立复算差得太多：被测 %r，复算 %r" % (got, exp["dead_time_s"])
+    assert got > 1.0, "纯滞后被当成零了：%r" % got
 
 
 def test_frozen_segment_removed_from_fit():
-    """题面原文：「连续 5 点以上读数完全相同的整段按传感器卡死剔除」。
+    """题面原文：「连续 frozen_run_min 点以上读数完全相同的整段按传感器卡死处理」。
 
     记录里塞了 20 点卡死读数：报告要如实报出剔除数量，参数仍要准。
     """
     data = make_run(seed=307, frozen_from=380, frozen_len=20)
     report, _ = run_case(data)
-    if not isinstance(report, dict):
-        return False
+    assert isinstance(report, dict), "没有产出报告"
     exp = independent_fit(data)
-    return (report.get("skipped_frozen") == exp["skipped_frozen"]
-            and _close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.0015)
-            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.003))
+    assert int(report["skipped_frozen"]) == exp["skipped_frozen"], \
+        "卡死点数不对：被测 %r，复算 %r" % (report["skipped_frozen"], exp["skipped_frozen"])
+    gain = float(report["steady_gain_c_per_pct"])
+    tau = float(report["time_constant_s"])
+    assert abs(gain - exp["steady_gain_c_per_pct"]) <= 0.0015 * abs(exp["steady_gain_c_per_pct"]), \
+        "剔除卡死段后增益偏了：%r 对 %r" % (gain, exp["steady_gain_c_per_pct"])
+    assert abs(tau - exp["time_constant_s"]) <= 0.003 * abs(exp["time_constant_s"]), \
+        "剔除卡死段后时间常数偏了：%r 对 %r" % (tau, exp["time_constant_s"])
 
 
 def test_second_run_with_other_parameters():
@@ -248,36 +245,36 @@ def test_second_run_with_other_parameters():
     data = make_run(gain=0.75, tau=260.0, delay=20.0, dt_s=2.0, duration=1800.0,
                     frozen_from=300, seed=409)
     report, _ = run_case(data)
-    if not isinstance(report, dict):
-        return False
+    assert isinstance(report, dict), "没有产出报告"
     exp = independent_fit(data)
-    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.0015)
-            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.003)
-            and abs(float(report.get("dead_time_s", -99)) - exp["dead_time_s"]) <= 2.0)
+    gain = float(report["steady_gain_c_per_pct"])
+    tau = float(report["time_constant_s"])
+    delay = float(report["dead_time_s"])
+    assert abs(gain - exp["steady_gain_c_per_pct"]) <= 0.0015 * abs(exp["steady_gain_c_per_pct"]), \
+        "换记录后增益偏了：%r 对 %r" % (gain, exp["steady_gain_c_per_pct"])
+    assert abs(tau - exp["time_constant_s"]) <= 0.003 * abs(exp["time_constant_s"]), \
+        "换记录后时间常数偏了：%r 对 %r" % (tau, exp["time_constant_s"])
+    assert abs(delay - exp["dead_time_s"]) <= 0.5, \
+        "换记录后纯滞后偏了：%r 对 %r" % (delay, exp["dead_time_s"])
 
 
 def test_short_delay_run_still_estimated():
-    """题面原文：「延迟小到几个采样周期时也要估出来，不能直接给零」。
+    """题面原文：「θ 与 τ 用残差平方和最小的方式估出来（先在网格上搜、再细化）」。
 
-    延迟真值 6 s：估计值与独立复算相差不超过 2 秒，且不得报 0。
+    延迟真值 6 s：估计值与独立复算相差不超过 0.5 秒，且不得报 0。
     """
     data = make_run(delay=6.0, tau=90.0, seed=503, frozen_from=500)
     report, _ = run_case(data)
-    if not isinstance(report, dict):
-        return False
+    assert isinstance(report, dict), "没有产出报告"
     exp = independent_fit(data)
-    try:
-        got = float(report["dead_time_s"])
-    except (KeyError, TypeError, ValueError):
-        return False
-    return abs(got - exp["dead_time_s"]) <= 2.0 and got > 0.5
+    got = float(report["dead_time_s"])
+    assert abs(got - exp["dead_time_s"]) <= 0.5, \
+        "短延迟与独立复算差得太多：被测 %r，复算 %r" % (got, exp["dead_time_s"])
+    assert got > 0.5, "短延迟被当成零了：%r" % got
 
 
-def test_invalid_runs_rejected_without_output():
-    """题面原文：「记录不合法时以退出码 2 结束，不产出报告」。
-
-    四种坏记录：采样点不足 100、时间不单调、没有阶跃、输入有两次跃变。
-    """
+def _bad_records():
+    """四类坏记录：点太少、时间不单调、没有阶跃、两次跃变。"""
     good = make_run(seed=601)
     few = json.loads(json.dumps(good))
     few["samples"] = few["samples"][:80]
@@ -290,88 +287,87 @@ def test_invalid_runs_rejected_without_output():
     for s in twostep["samples"]:
         if s["t"] >= 600.0:
             s["u"] = 40.0
-    for data in (few, nonmono, nostep, twostep):
-        tmp = tempfile.mkdtemp(prefix="id-bad-")
-        rpath = os.path.join(tmp, "run.json")
-        opath = os.path.join(tmp, "report.json")
-        with open(rpath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-        proc = _run(rpath, opath)
-        if proc.returncode != 2 or os.path.exists(opath) or not (proc.stderr or "").strip():
-            return False
-        if [n for n in os.listdir(tmp) if n.endswith(".tmp")]:
-            return False
-    return True
+    return [("采样点不足", few), ("时间不单调", nonmono),
+            ("没有阶跃", nostep), ("两次跃变", twostep)]
+
+
+@pytest.mark.parametrize("label,data", _bad_records())
+def test_invalid_runs_rejected_without_output(label, data):
+    """题面原文：「点数不足一百、时间倒序或为负、找不到阶跃、出现多次跃变、可用点太少、全部被判卡死，这些情况返回 2 且不写模型卡」。
+
+    逐类坏记录跑一遍：退出码 2、stderr 有原因、不产出报告、不留临时文件。
+    """
+    tmp = tempfile.mkdtemp(prefix="id-bad-")
+    rpath = os.path.join(tmp, "run.json")
+    opath = os.path.join(tmp, "report.json")
+    with open(rpath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    proc = _run(rpath, opath)
+    assert proc.returncode == 2, "%s：退出码应为 2，实际 %r" % (label, proc.returncode)
+    assert (proc.stderr or "").strip(), "%s：stderr 没有写原因" % label
+    assert not os.path.exists(opath), "%s：不该产出报告文件" % label
+    assert not [n for n in os.listdir(tmp) if n.endswith(".tmp")], "%s：留下临时文件" % label
 
 
 def test_rmse_reflects_fit_quality():
-    """题面原文：「报告给出拟合残差均方根，用于判断这次辨识是否可用」。
+    """题面原文：「报告给出拟合窗口内（剔除卡死点后）的残差均方根」。
 
     标准台架记录噪声约 0.012：rmse 不超过 0.03，且与独立复算相差不超过 30%。
     """
     data = make_run(seed=701)
     report, _ = run_case(data)
-    if not isinstance(report, dict):
-        return False
+    assert isinstance(report, dict), "没有产出报告"
     exp = independent_fit(data)
-    try:
-        got = float(report["model_rms_c"])
-    except (KeyError, TypeError, ValueError):
-        return False
-    return got <= 0.03 and abs(got - exp["model_rms_c"]) <= 0.30 * exp["model_rms_c"]
+    got = float(report["model_rms_c"])
+    assert got <= 0.03, "残差均方根过大：%r" % got
+    assert abs(got - exp["model_rms_c"]) <= 0.30 * exp["model_rms_c"], \
+        "残差均方根与独立复算差得太多：%r 对 %r" % (got, exp["model_rms_c"])
 
 
 def test_report_schema_and_rounding():
-    """题面原文：「报告结构固定，增益三位小数、时间常数与延迟一位、rmse 四位」。
+    """题面原文：「增益三位、时间常数一位、纯滞后一位、残差三位，位数错了按不通过算」。
 
     校验顶层字段、位数与有限性，文件里不出现 NaN 或 Infinity。
     """
     data = make_run(seed=809)
     report, ctx = run_case(data)
-    if not isinstance(report, dict):
-        return False
-    need = {"recorded_points", "fitted_points", "skipped_frozen", "pre_step_level_c", "step_time_s", "step_size_pct",
-            "steady_gain_c_per_pct", "time_constant_s", "dead_time_s", "model_rms_c", "model_note"}
-    if not need.issubset(set(report)):
-        return False
+    assert isinstance(report, dict), "没有产出报告"
+    need = {"recorded_points", "fitted_points", "skipped_frozen", "pre_step_level_c",
+            "step_time_s", "step_size_pct", "steady_gain_c_per_pct", "time_constant_s",
+            "dead_time_s", "model_rms_c", "model_note"}
+    assert need.issubset(set(report)), "报告缺字段：%r" % (need - set(report))
     for key in ("pre_step_level_c", "step_size_pct", "steady_gain_c_per_pct"):
         v = float(report[key])
-        if not math.isfinite(v) or abs(v - round(v, 3)) > 1e-12:
-            return False
+        assert math.isfinite(v), "%s 不是有限值" % key
+        assert abs(v - round(v, 3)) <= 1e-12, "%s 不是三位小数：%r" % (key, v)
     for key in ("time_constant_s", "dead_time_s", "step_time_s"):
         v = float(report[key])
-        if not math.isfinite(v) or abs(v - round(v, 1)) > 1e-12:
-            return False
+        assert math.isfinite(v), "%s 不是有限值" % key
+        assert abs(v - round(v, 1)) <= 1e-12, "%s 不是一位小数：%r" % (key, v)
     v = float(report["model_rms_c"])
-    if not math.isfinite(v) or abs(v - round(v, 4)) > 1e-12:
-        return False
+    assert math.isfinite(v) and abs(v - round(v, 4)) <= 1e-12, "model_rms_c 不是四位小数：%r" % v
     raw = open(ctx["out"], encoding="utf-8").read()
-    return "NaN" not in raw and "Infinity" not in raw
+    assert "NaN" not in raw and "Infinity" not in raw, "报告里出现了 NaN 或 Infinity"
 
 
 def test_rerun_produces_identical_bytes():
-    """题面原文：「同一份记录重复运行，报告逐字节一致」。
+    """题面原文：「重复跑同一份实验记录，模型卡应逐字节相同，不要写入运行时刻之类的信息」。
 
     连跑两次，两个报告文件字节完全相同。
     """
     data = make_run(seed=907)
     first, ctx1 = run_case(data)
-    if first is None:
-        return False
-    # 先确认跑出来的是一份合格报告（缺字段或参数不是有限的都不算）
-    if not {"fitted_points", "skipped_frozen", "time_constant_s", "dead_time_s"}.issubset(set(first)):
-        return False
-    if not all(math.isfinite(float(first[k])) for k in ("time_constant_s", "dead_time_s", "steady_gain_c_per_pct")):
-        return False
+    assert isinstance(first, dict), "第一次运行没有产出报告"
+    for key in ("time_constant_s", "dead_time_s", "steady_gain_c_per_pct"):
+        assert math.isfinite(float(first[key])), "第一次运行的 %s 不是有限值" % key
     body1 = open(ctx1["out"], "rb").read()
     second, ctx2 = run_case(data)
-    if second is None:
-        return False
-    return body1 == open(ctx2["out"], "rb").read()
+    assert second is not None, "第二次运行没有产出报告"
+    assert body1 == open(ctx2["out"], "rb").read(), "两次运行报告字节不一致"
 
 
 def test_failed_run_keeps_previous_report():
-    """题面原文：「运行失败时不能覆盖上一次已经写好的报告」。
+    """题面原文：「一旦这次失败，先前写好的模型卡不能被冲掉」。
 
     先跑一次合格记录留下报告，再用没有阶跃的坏记录跑：退出码 2，旧报告字节不变。
     """
@@ -382,8 +378,8 @@ def test_failed_run_keeps_previous_report():
     with open(rpath, "w", encoding="utf-8") as f:
         json.dump(good, f, ensure_ascii=False)
     first = _run(rpath, opath)
-    if first.returncode != 0 or not os.path.exists(opath):
-        return False
+    assert first.returncode == 0, "合格记录应退出 0，实际 %r" % first.returncode
+    assert os.path.exists(opath), "合格记录没有产出报告"
     before = open(opath, "rb").read()
     broken = json.loads(json.dumps(good))
     for s in broken["samples"]:
@@ -391,24 +387,5 @@ def test_failed_run_keeps_previous_report():
     with open(rpath, "w", encoding="utf-8") as f:
         json.dump(broken, f, ensure_ascii=False)
     second = _run(rpath, opath)
-    if second.returncode != 2:
-        return False
-    return open(opath, "rb").read() == before
-
-
-def main():
-    total = 0.0
-    for name, weight in WEIGHTS.items():
-        fn = globals().get(name)
-        try:
-            passed = bool(fn and fn())
-        except Exception as e:  # noqa: BLE001 —— 任何异常都按不通过计
-            print("%s: 异常 %r" % (name, e), file=sys.stderr)
-            passed = False
-        total += weight * passed
-        print("%s: %s (权重 %.2f)" % (name, "PASS" if passed else "FAIL", weight), file=sys.stderr)
-    print("%.6f" % total)
-
-
-if __name__ == "__main__":
-    main()
+    assert second.returncode == 2, "坏记录应退出 2，实际 %r" % second.returncode
+    assert open(opath, "rb").read() == before, "运行失败把上一次的报告覆盖了"
