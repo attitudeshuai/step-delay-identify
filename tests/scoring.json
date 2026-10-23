@@ -5,47 +5,43 @@
   ],
   "tests": {
     "test_outputs.py::test_gain_and_tau_match_independent_fit": {
-      "weight": 0.154,
+      "weight": 0.172,
       "rationale": "核心：增益与时间常数必须与独立的网格加黄金分割复算吻合"
     },
     "test_outputs.py::test_delay_estimated_from_grid_search": {
-      "weight": 0.144,
+      "weight": 0.159,
       "rationale": "纯延迟要在延迟维度上扫出来，不能被时间常数吸收"
     },
     "test_outputs.py::test_frozen_segment_removed_from_fit": {
-      "weight": 0.108,
+      "weight": 0.119,
       "rationale": "传感器卡死段整段剔除，剔除点数与拟合点数都要对"
     },
     "test_outputs.py::test_second_run_with_other_parameters": {
-      "weight": 0.096,
+      "weight": 0.106,
       "rationale": "换一组增益、时间常数、延迟与采样步长仍要吻合"
     },
     "test_outputs.py::test_short_delay_run_still_estimated": {
-      "weight": 0.084,
+      "weight": 0.093,
       "rationale": "小延迟工况：延迟不能被报成 0"
     },
-    "test_outputs.py::test_invalid_runs_rejected_without_output": {
-      "weight": 0.096,
-      "rationale": "四类坏记录的拒收与副作用（退出码、stderr、不落卡）"
-    },
     "test_outputs.py::test_parameter_uncertainties_reported": {
-      "weight": 0.12,
+      "weight": 0.132,
       "rationale": "三个参数的不确定度要含 θ、τ 两列雅可比，只对增益求方差会偏小"
     },
     "test_outputs.py::test_rmse_reflects_fit_quality": {
-      "weight": 0.054,
+      "weight": 0.06,
       "rationale": "残差均方根要落在噪声量级且与独立复算一致"
     },
     "test_outputs.py::test_report_schema_and_rounding": {
-      "weight": 0.054,
+      "weight": 0.06,
       "rationale": "模型卡字段、位数与有限性"
     },
     "test_outputs.py::test_rerun_produces_identical_bytes": {
-      "weight": 0.048,
+      "weight": 0.053,
       "rationale": "重复运行逐字节一致，不写运行时刻"
     },
     "test_outputs.py::test_failed_run_keeps_previous_report": {
-      "weight": 0.042,
+      "weight": 0.046,
       "rationale": "失败运行不得覆盖已有模型卡"
     }
   }

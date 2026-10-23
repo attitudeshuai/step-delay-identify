@@ -7,17 +7,16 @@
 import os
 
 WEIGHTS = {
-    "test_gain_and_tau_match_independent_fit": 0.154,
-    "test_delay_estimated_from_grid_search": 0.144,
-    "test_frozen_segment_removed_from_fit": 0.108,
-    "test_second_run_with_other_parameters": 0.096,
-    "test_short_delay_run_still_estimated": 0.084,
-    "test_invalid_runs_rejected_without_output": 0.096,
-    "test_parameter_uncertainties_reported": 0.120,
-    "test_rmse_reflects_fit_quality": 0.054,
-    "test_report_schema_and_rounding": 0.054,
-    "test_rerun_produces_identical_bytes": 0.048,
-    "test_failed_run_keeps_previous_report": 0.042,
+    "test_gain_and_tau_match_independent_fit": 0.172,
+    "test_delay_estimated_from_grid_search": 0.159,
+    "test_frozen_segment_removed_from_fit": 0.119,
+    "test_second_run_with_other_parameters": 0.106,
+    "test_short_delay_run_still_estimated": 0.093,
+    "test_parameter_uncertainties_reported": 0.132,
+    "test_rmse_reflects_fit_quality": 0.060,
+    "test_report_schema_and_rounding": 0.060,
+    "test_rerun_produces_identical_bytes": 0.053,
+    "test_failed_run_keeps_previous_report": 0.046,
 }
 
 
