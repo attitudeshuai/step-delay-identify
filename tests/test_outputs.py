@@ -204,7 +204,7 @@ def test_gain_and_tau_match_independent_fit():
 
 
 def test_delay_estimated_from_grid_search():
-    """题面原文：「θ 与 τ 用残差平方和最小的方式估出来（先在网格上搜、再细化）」。
+    """题面原文：「用残差平方和最小的方式估出来」。
 
     延迟真值 37.5 s：估计值与独立复算相差不超过 0.5 秒，且必须明显大于零。
     """
@@ -219,7 +219,7 @@ def test_delay_estimated_from_grid_search():
 
 
 def test_frozen_segment_removed_from_fit():
-    """题面原文：「连续 frozen_run_min 点以上读数完全相同的整段按传感器卡死处理」。
+    """题面原文：「点以上读数完全相同的整段按传感器卡死处理」。
 
     记录里塞了 20 点卡死读数：报告要如实报出剔除数量，参数仍要准。
     """
@@ -238,7 +238,7 @@ def test_frozen_segment_removed_from_fit():
 
 
 def test_second_run_with_other_parameters():
-    """题面原文：「复检会喂别的台架记录，增益、时间常数与采样步长都不同」。
+    """题面原文：「复检会换增益、时间常数、延迟与采样步长」。
 
     换增益 0.75、τ=260 s、dt=2 s 的记录后仍要吻合。
     """
@@ -259,7 +259,7 @@ def test_second_run_with_other_parameters():
 
 
 def test_short_delay_run_still_estimated():
-    """题面原文：「θ 与 τ 用残差平方和最小的方式估出来（先在网格上搜、再细化）」。
+    """题面原文：「用残差平方和最小的方式估出来」。
 
     延迟真值 6 s：估计值与独立复算相差不超过 0.5 秒，且不得报 0。
     """
