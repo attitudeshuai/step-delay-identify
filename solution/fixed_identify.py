@@ -205,26 +205,26 @@ def analyse(scan):
 
     gain, tau, theta, rmse = fit_fopdt(fit_ts, fit_ys, base, t_step)
     return {
-        "n_samples": len(times), "n_used": len(fit_ts),
-        "n_frozen": sum(1 for m in mask if m),
-        "baseline_c": base, "step_at_s": t_step, "delta_u": d_u,
-        "gain_c_per_pct": gain / d_u, "tau_s": tau, "delay_s": theta, "rmse_c": rmse,
+        "recorded_points": len(times), "fitted_points": len(fit_ts),
+        "skipped_frozen": sum(1 for m in mask if m),
+        "pre_step_level_c": base, "step_time_s": t_step, "step_size_pct": d_u,
+        "steady_gain_c_per_pct": gain / d_u, "time_constant_s": tau, "dead_time_s": theta, "model_rms_c": rmse,
     }
 
 
 def build_report(scan, res):
     return {
-        "n_samples": res["n_samples"],
-        "n_used": res["n_used"],
-        "n_frozen": res["n_frozen"],
-        "baseline_c": round(res["baseline_c"], 3),
-        "step_at_s": round(res["step_at_s"], 1),
-        "delta_u": round(res["delta_u"], 3),
-        "gain_c_per_pct": round(res["gain_c_per_pct"], 3),
-        "tau_s": round(res["tau_s"], 1),
-        "delay_s": round(res["delay_s"], 1),
-        "rmse_c": round(res["rmse_c"], 4),
-        "meta": {"model": "fopdt", "unit": scan["unit"]},
+        "recorded_points": res["recorded_points"],
+        "fitted_points": res["fitted_points"],
+        "skipped_frozen": res["skipped_frozen"],
+        "pre_step_level_c": round(res["pre_step_level_c"], 3),
+        "step_time_s": round(res["step_time_s"], 1),
+        "step_size_pct": round(res["step_size_pct"], 3),
+        "steady_gain_c_per_pct": round(res["steady_gain_c_per_pct"], 3),
+        "time_constant_s": round(res["time_constant_s"], 1),
+        "dead_time_s": round(res["dead_time_s"], 1),
+        "model_rms_c": round(res["model_rms_c"], 4),
+        "model_note": {"model": "fopdt", "unit": scan["unit"]},
     }
 
 

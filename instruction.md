@@ -31,17 +31,17 @@
 
 ```json
 {
-  "n_samples": 901,
-  "n_used": 849,
-  "n_frozen": 20,
-  "baseline_c": 24.999,
-  "step_at_s": 59.0,
-  "delta_u": 50.0,
-  "gain_c_per_pct": 0.4,
-  "tau_s": 120.0,
-  "delay_s": 38.5,
-  "rmse_c": 0.0069,
-  "meta": {"model": "fopdt", "unit": {"time": "s", "temperature": "degC", "power": "%"}}
+  "recorded_points": 901,
+  "fitted_points": 849,
+  "skipped_frozen": 20,
+  "pre_step_level_c": 24.999,
+  "step_time_s": 59.0,
+  "step_size_pct": 50.0,
+  "steady_gain_c_per_pct": 0.4,
+  "time_constant_s": 120.0,
+  "dead_time_s": 38.5,
+  "model_rms_c": 0.0069,
+  "model_note": {"model": "fopdt", "unit": {"time": "s", "temperature": "degC", "power": "%"}}
 }
 ```
 

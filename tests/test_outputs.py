@@ -156,9 +156,9 @@ def independent_fit(data):
         tau = _golden(lambda x: _sse(base, ts, ser, t_step, theta, x)[0],
                       max(5.0, tau / 1.6), min(3000.0, tau * 1.6))
     sse, gain = _sse(base, ts, ser, t_step, theta, tau)
-    return {"gain_c_per_pct": gain / du, "tau_s": tau, "delay_s": theta,
-            "rmse_c": math.sqrt(sse / len(ts)), "n_frozen": sum(1 for m in mask if m),
-            "n_used": len(ts), "delta_u": du}
+    return {"steady_gain_c_per_pct": gain / du, "time_constant_s": tau, "dead_time_s": theta,
+            "model_rms_c": math.sqrt(sse / len(ts)), "skipped_frozen": sum(1 for m in mask if m),
+            "fitted_points": len(ts), "step_size_pct": du}
 
 
 def _run(path, out_path, timeout=240):
@@ -204,8 +204,8 @@ def test_gain_and_tau_match_independent_fit():
     if not isinstance(report, dict):
         return False
     exp = independent_fit(data)
-    return (_close(report.get("gain_c_per_pct"), exp["gain_c_per_pct"], 0.01)
-            and _close(report.get("tau_s"), exp["tau_s"], 0.02))
+    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.01)
+            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.02))
 
 
 def test_delay_estimated_from_grid_search():
@@ -219,10 +219,10 @@ def test_delay_estimated_from_grid_search():
         return False
     exp = independent_fit(data)
     try:
-        got = float(report["delay_s"])
+        got = float(report["dead_time_s"])
     except (KeyError, TypeError, ValueError):
         return False
-    return abs(got - exp["delay_s"]) <= 2.0
+    return abs(got - exp["dead_time_s"]) <= 2.0
 
 
 def test_frozen_segment_removed_from_fit():
@@ -235,9 +235,9 @@ def test_frozen_segment_removed_from_fit():
     if not isinstance(report, dict):
         return False
     exp = independent_fit(data)
-    return (report.get("n_frozen") == exp["n_frozen"]
-            and _close(report.get("gain_c_per_pct"), exp["gain_c_per_pct"], 0.01)
-            and _close(report.get("tau_s"), exp["tau_s"], 0.02))
+    return (report.get("skipped_frozen") == exp["skipped_frozen"]
+            and _close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.01)
+            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.02))
 
 
 def test_second_run_with_other_parameters():
@@ -251,9 +251,9 @@ def test_second_run_with_other_parameters():
     if not isinstance(report, dict):
         return False
     exp = independent_fit(data)
-    return (_close(report.get("gain_c_per_pct"), exp["gain_c_per_pct"], 0.01)
-            and _close(report.get("tau_s"), exp["tau_s"], 0.02)
-            and abs(float(report.get("delay_s", -99)) - exp["delay_s"]) <= 2.0)
+    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.01)
+            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.02)
+            and abs(float(report.get("dead_time_s", -99)) - exp["dead_time_s"]) <= 2.0)
 
 
 def test_short_delay_run_still_estimated():
@@ -267,10 +267,10 @@ def test_short_delay_run_still_estimated():
         return False
     exp = independent_fit(data)
     try:
-        got = float(report["delay_s"])
+        got = float(report["dead_time_s"])
     except (KeyError, TypeError, ValueError):
         return False
-    return abs(got - exp["delay_s"]) <= 2.0 and got > 0.5
+    return abs(got - exp["dead_time_s"]) <= 2.0 and got > 0.5
 
 
 def test_invalid_runs_rejected_without_output():
@@ -315,10 +315,10 @@ def test_rmse_reflects_fit_quality():
         return False
     exp = independent_fit(data)
     try:
-        got = float(report["rmse_c"])
+        got = float(report["model_rms_c"])
     except (KeyError, TypeError, ValueError):
         return False
-    return got <= 0.03 and abs(got - exp["rmse_c"]) <= 0.30 * exp["rmse_c"]
+    return got <= 0.03 and abs(got - exp["model_rms_c"]) <= 0.30 * exp["model_rms_c"]
 
 
 def test_report_schema_and_rounding():
@@ -330,19 +330,19 @@ def test_report_schema_and_rounding():
     report, ctx = run_case(data)
     if not isinstance(report, dict):
         return False
-    need = {"n_samples", "n_used", "n_frozen", "baseline_c", "step_at_s", "delta_u",
-            "gain_c_per_pct", "tau_s", "delay_s", "rmse_c", "meta"}
+    need = {"recorded_points", "fitted_points", "skipped_frozen", "pre_step_level_c", "step_time_s", "step_size_pct",
+            "steady_gain_c_per_pct", "time_constant_s", "dead_time_s", "model_rms_c", "model_note"}
     if not need.issubset(set(report)):
         return False
-    for key in ("baseline_c", "delta_u", "gain_c_per_pct"):
+    for key in ("pre_step_level_c", "step_size_pct", "steady_gain_c_per_pct"):
         v = float(report[key])
         if not math.isfinite(v) or abs(v - round(v, 3)) > 1e-12:
             return False
-    for key in ("tau_s", "delay_s", "step_at_s"):
+    for key in ("time_constant_s", "dead_time_s", "step_time_s"):
         v = float(report[key])
         if not math.isfinite(v) or abs(v - round(v, 1)) > 1e-12:
             return False
-    v = float(report["rmse_c"])
+    v = float(report["model_rms_c"])
     if not math.isfinite(v) or abs(v - round(v, 4)) > 1e-12:
         return False
     raw = open(ctx["out"], encoding="utf-8").read()
@@ -359,9 +359,9 @@ def test_rerun_produces_identical_bytes():
     if first is None:
         return False
     # 先确认跑出来的是一份合格报告（缺字段或参数不是有限的都不算）
-    if not {"n_used", "n_frozen", "tau_s", "delay_s"}.issubset(set(first)):
+    if not {"fitted_points", "skipped_frozen", "time_constant_s", "dead_time_s"}.issubset(set(first)):
         return False
-    if not all(math.isfinite(float(first[k])) for k in ("tau_s", "delay_s", "gain_c_per_pct")):
+    if not all(math.isfinite(float(first[k])) for k in ("time_constant_s", "dead_time_s", "steady_gain_c_per_pct")):
         return False
     body1 = open(ctx1["out"], "rb").read()
     second, ctx2 = run_case(data)
