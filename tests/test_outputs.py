@@ -204,8 +204,8 @@ def test_gain_and_tau_match_independent_fit():
     if not isinstance(report, dict):
         return False
     exp = independent_fit(data)
-    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.01)
-            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.02))
+    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.0015)
+            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.003))
 
 
 def test_delay_estimated_from_grid_search():
@@ -236,8 +236,8 @@ def test_frozen_segment_removed_from_fit():
         return False
     exp = independent_fit(data)
     return (report.get("skipped_frozen") == exp["skipped_frozen"]
-            and _close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.01)
-            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.02))
+            and _close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.0015)
+            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.003))
 
 
 def test_second_run_with_other_parameters():
@@ -251,8 +251,8 @@ def test_second_run_with_other_parameters():
     if not isinstance(report, dict):
         return False
     exp = independent_fit(data)
-    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.01)
-            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.02)
+    return (_close(report.get("steady_gain_c_per_pct"), exp["steady_gain_c_per_pct"], 0.0015)
+            and _close(report.get("time_constant_s"), exp["time_constant_s"], 0.003)
             and abs(float(report.get("dead_time_s", -99)) - exp["dead_time_s"]) <= 2.0)
 
 
